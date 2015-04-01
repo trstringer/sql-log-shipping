@@ -12,8 +12,16 @@ function Get-ConnectionString {
     return "data source = $SqlServerName; initial catalog = master; trusted_connection = true; application name = sql-log-shipping;"
 }
 
-function Get-LogShippingConfiguration {
+function Out-LogShippingConfiguration {
     
+}
+function Get-LogShippingConfiguration {
+    param (
+        [Parameter(Mandatory = $true)]
+        [string]$SqlServerName
+    )
+
+    $PrimaryDatabases = Get-PrimaryDatabases -SqlServerName $SqlServerName
 }
 function Get-PrimaryDatabases {
     param (
@@ -57,9 +65,6 @@ function Get-PrimaryDatabases {
     }
 
     return $PrimaryDatabases
-}
-function Get-SecondaryDatabases {
-
 }
 
 function Get-AgentJob {
