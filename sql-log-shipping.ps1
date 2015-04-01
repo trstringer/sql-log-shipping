@@ -12,16 +12,34 @@ function Get-ConnectionString {
     return "data source = $SqlServerName; initial catalog = master; trusted_connection = true; application name = sql-log-shipping;"
 }
 
-function Out-LogShippingConfiguration {
-    
-}
-function Get-LogShippingConfiguration {
+function RetrieveAndDisplay-LogShippingConfiguration {
     param (
         [Parameter(Mandatory = $true)]
         [string]$SqlServerName
     )
 
     $PrimaryDatabases = Get-PrimaryDatabases -SqlServerName $SqlServerName
+
+    foreach ($PrimaryDb in $PrimaryDatabases) {
+        $BackupCompression = 
+            switch ($PrimaryDb.BackupCompression) {
+                0 { "DISABLED" }
+                1 { "ENABLED" }
+                2 { "INHERIT SERVER CONFIG" }
+            }
+
+        "PRIMARY DATABASE"
+        "Database name:       $($PrimaryDb.DatabaseName)"
+        "SQL Server instance: $SqlServerName"
+        ""
+        "** BACKUP INFORMATION **"
+        "* Backup share:         $($PrimaryDb.BackupShare)"
+        "* Backup directory:     $($PrimaryDb.BackupDirectory)"
+        "* Backup retention(hr): $($PrimaryDb.BackupRetentionPeriod / 60)"
+        "* Backup compression:   $BackupCompression"
+        "* Last backup date:     $($PrimaryDb.LastBackupDate)"
+        "* Last backup file:     $($PrimaryDb.LastBackupFile)"
+    }
 }
 function Get-PrimaryDatabases {
     param (
@@ -105,4 +123,4 @@ function Get-AgentJob {
     return $Job
 }
 
-Get-PrimaryDatabases -SqlServerName $SqlServerName
+RetrieveAndDisplay-LogShippingConfiguration -SqlServerName $SqlServerName
