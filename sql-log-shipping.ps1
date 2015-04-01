@@ -28,17 +28,17 @@ function RetrieveAndDisplay-LogShippingConfiguration {
                 2 { "INHERIT SERVER CONFIG" }
             }
 
-        "PRIMARY DATABASE"
+        " ***** PRIMARY DATABASE ($($PrimaryDb.DatabaseName)) *****"
         "Database name:       $($PrimaryDb.DatabaseName)"
         "SQL Server instance: $SqlServerName"
         ""
-        "** BACKUP INFORMATION **"
-        "* Backup share:         $($PrimaryDb.BackupShare)"
-        "* Backup directory:     $($PrimaryDb.BackupDirectory)"
-        "* Backup retention(hr): $($PrimaryDb.BackupRetentionPeriod / 60)"
-        "* Backup compression:   $BackupCompression"
-        "* Last backup date:     $($PrimaryDb.LastBackupDate)"
-        "* Last backup file:     $($PrimaryDb.LastBackupFile)"
+        "Backup share:         $($PrimaryDb.BackupShare)"
+        "Backup directory:     $($PrimaryDb.BackupDirectory)"
+        "Backup retention(hr): $($PrimaryDb.BackupRetentionPeriod / 60)"
+        "Backup compression:   $BackupCompression"
+        "Last backup date:     $($PrimaryDb.LastBackupDate)"
+        "Last backup file:     $($PrimaryDb.LastBackupFile)"
+        "Backup job name:      $($PrimaryDb.BackupJob.JobName)"
     }
 }
 function Get-PrimaryDatabases {
