@@ -19,6 +19,7 @@ function RetrieveAndDisplay-LogShippingConfiguration {
     )
 
     $PrimaryDatabases = Get-PrimaryDatabases -SqlServerName $SqlServerName
+    $SecondaryDatabases = Get-SecondaryDatabases -SqlServerName $SqlServerName
 
     foreach ($PrimaryDb in $PrimaryDatabases) {
         $BackupCompression = 
@@ -40,11 +41,49 @@ function RetrieveAndDisplay-LogShippingConfiguration {
         "Last backup file:     $($PrimaryDb.LastBackupFile)"
         "Backup job name:      $($PrimaryDb.BackupJob.JobName)"
         ""
-        foreach ($SecondaryDb in $PrimaryDb.SecondaryDatabases) {
-            "   *** SECONDARY DATABASE ($($SecondaryDb.SecondaryDatabaseName)) ***"
-            "  Database name:       $($SecondaryDb.SecondaryDatabaseName)"
-            "  SQL Server instance: $($SecondaryDb.SecondaryServerName)"
+        foreach ($PrimSecondaryDb in $PrimaryDb.SecondaryDatabases) {
+            "   *** SECONDARY DATABASE ($($PrimSecondaryDb.SecondaryDatabaseName)) ***"
+            "  Database name:       $($PrimSecondaryDb.SecondaryDatabaseName)"
+            "  SQL Server instance: $($PrimSecondaryDb.SecondaryServerName)"
         }
+    }
+
+    foreach ($SecondaryDb in $SecondaryDatabases) {
+        if ($SecondaryDb.RestoreAll -eq 1) {
+            $RestoreAllDesc = "YES"
+        }
+        else {
+            $RestoreAllDesc = "NO"
+        }
+
+        $RestoreModeDesc = 
+            switch ($SecondaryDb.RestoreMode) {
+                0 { "NORECOVERY" }
+                1 { "STANDBY" }
+            }
+
+        if ($SecondaryDb.DisconnectUsers -eq 1) {
+            $DisconnectUsersDesc = "YES"
+        }
+        else {
+            $DisconnectUsersDesc = "NO"
+        }
+
+        " ***** SECONDARY DATABASE ($($SecondaryDb.DatabaseName)) *****"
+        "Database name:       $($SecondaryDb.DatabaseName)"
+        "SQL Server instance: $SqlServerName"
+        ""
+        "Restore delay:    $($SecondaryDb.RestoreDelay) MINUTE(S)"
+        "Restore all:      $RestoreAllDesc"
+        "Restore mode:     $RestoreModeDesc"
+        "Disconnect users: $DisconnectUsersDesc"
+        ""
+        "Block size:    $($SecondaryDb.BlockSize) BYTES"
+        "Buffer count:  $($SecondaryDb.BufferCount)"
+        "Max transfer size: $($SecondaryDb.MaxTransferSize) BYTES"
+        ""
+        "Last restored file: $($SecondaryDb.LastRestoredFile)"
+        "Last restored date: $($Secondarydb.LastRestoredDate)"
     }
 }
 function Get-PrimaryDatabases {
@@ -168,7 +207,48 @@ function Get-AgentJob {
     return $Job
 }
 
+function Get-SecondaryDatabases {
+    param (
+        [Parameter(Mandatory = $true)]
+        [string]$SqlServerName
+    )
 
+    $SqlConnection = New-Object System.Data.SqlClient.SqlConnection(Get-ConnectionString -SqlServerName $SqlServerName)
+    $SqlCmd = New-Object System.Data.SqlClient.SqlCommand
+    $SqlCmd.Connection = $SqlConnection
+    $SqlCmd.CommandText = "
+        select secondary_id, secondary_database,
+	        restore_delay, restore_all, restore_mode,
+	        disconnect_users, block_size, buffer_count, max_transfer_size,
+	        last_restored_file, last_restored_date
+        from msdb.dbo.log_shipping_secondary_databases;"
+
+    $Output = New-Object System.Data.DataTable
+    $sda = New-Object System.Data.SqlClient.SqlDataAdapter($SqlCmd)
+
+    $sda.Fill($Output) | Out-Null
+
+    $SecondaryDatabases = @()
+
+    foreach ($Row in $Output.Rows) {
+        $SecondaryDb = New-Object System.Object
+        $SecondaryDb | Add-Member -MemberType NoteProperty -Name "DatabaseName" -Value $Row["secondary_database"]
+        $SecondaryDb | Add-Member -MemberType NoteProperty -Name "SecondaryId" -Value ([System.Guid]::Parse($Row["secondary_id"]))
+        $SecondaryDb | Add-Member -MemberType NoteProperty -Name "RestoreDelay" -Value ([System.Convert]::ToInt32($Row["restore_delay"]))
+        $SecondaryDb | Add-Member -MemberType NoteProperty -Name "RestoreAll" -Value ([System.Convert]::ToInt32($Row["restore_all"]))
+        $SecondaryDb | Add-Member -MemberType NoteProperty -Name "RestoreMode" -Value ([System.Convert]::ToInt32($Row["restore_mode"]))
+        $SecondaryDb | Add-Member -MemberType NoteProperty -Name "DisconnectUsers" -Value ([System.Convert]::ToInt32($Row["disconnect_users"]))
+        $SecondaryDb | Add-Member -MemberType NoteProperty -Name "BlockSize" -Value ([System.Convert]::ToInt32($Row["BlockSize"]))
+        $SecondaryDb | Add-Member -MemberType NoteProperty -Name "BufferCount" -Value ([System.Convert]::ToInt32($Row["buffer_count"]))
+        $SecondaryDb | Add-Member -MemberType NoteProperty -Name "MaxTransferSize" -Value ([System.Convert]::ToInt32($Row["max_transfer_size"]))
+        $SecondaryDb | Add-Member -MemberType NoteProperty -Name "LastRestoredFile" -Value $Row["last_restored_file"]
+        $SecondaryDb | Add-Member -MemberType NoteProperty -Name "LastRestoredDate" -Value $Row["last_restored_date"]
+
+        $SecondaryDatabases += $SecondaryDb
+    }
+
+    return $SecondaryDatabases
+}
 
 RetrieveAndDisplay-LogShippingConfiguration -SqlServerName $SqlServerName
 
