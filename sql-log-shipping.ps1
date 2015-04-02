@@ -39,6 +39,12 @@ function RetrieveAndDisplay-LogShippingConfiguration {
         "Last backup date:     $($PrimaryDb.LastBackupDate)"
         "Last backup file:     $($PrimaryDb.LastBackupFile)"
         "Backup job name:      $($PrimaryDb.BackupJob.JobName)"
+        ""
+        foreach ($SecondaryDb in $PrimaryDb.SecondaryDatabases) {
+            "   *** SECONDARY DATABASE ($($SecondaryDb.SecondaryDatabaseName)) ***"
+            "  Database name:       $($SecondaryDb.SecondaryDatabaseName)"
+            "  SQL Server instance: $($SecondaryDb.SecondaryServerName)"
+        }
     }
 }
 function Get-PrimaryDatabases {
@@ -78,11 +84,50 @@ function Get-PrimaryDatabases {
         $PrimaryDatabase | Add-Member -MemberType NoteProperty -Name "LastBackupDate" -Value $Row["last_backup_date"]
         $PrimaryDatabase | Add-Member -MemberType NoteProperty -Name "BackupCompression" -Value ([System.Convert]::ToInt32($Row["backup_compression"]))
         $PrimaryDatabase | Add-Member -MemberType NoteProperty -Name "BackupJob" -Value (Get-AgentJob -SqlServerName $SqlServerName -JobId ([System.Guid]::Parse($Row["backup_job_id"])))
+        $PrimaryDatabase | Add-Member -MemberType NoteProperty -Name "SecondaryDatabases" -Value (Get-PrimarySecondaryDatabases -SqlServerName $SqlServerName -PrimaryId ([System.Guid]::Parse($Row["primary_id"])))
 
         $PrimaryDatabases += $PrimaryDatabase
     }
 
     return $PrimaryDatabases
+}
+function Get-PrimarySecondaryDatabases {
+    param (
+        [Parameter(Mandatory = $true)]
+        [string]$SqlServerName,
+
+        [Parameter(Mandatory = $true)]
+        [Guid]$PrimaryId
+    )
+
+    $SqlConnection = New-Object System.Data.SqlClient.SqlConnection(Get-ConnectionString -SqlServerName $SqlServerName)
+    $SqlCmd = New-Object System.Data.SqlClient.SqlCommand
+    $SqlCmd.Connection = $SqlConnection
+    $SqlCmd.CommandText = "
+        select secondary_server, secondary_database
+        from msdb.dbo.log_shipping_primary_secondaries
+        where primary_id = @primary_id;"
+
+    $PrimaryIdParam = New-Object System.Data.SqlClient.SqlParameter("@primary_id", [System.Data.SqlDbType]::UniqueIdentifier)
+    $PrimaryIdParam.Value = $PrimaryId
+    $SqlCmd.Parameters.Add($PrimaryIdParam) | Out-Null
+
+    $Output = New-Object System.Data.DataTable
+    $sda = New-Object System.Data.SqlClient.SqlDataAdapter($SqlCmd)
+
+    $sda.Fill($Output) | Out-Null
+
+    $SecondaryDatabases = @()
+
+    foreach ($Row in $Output.Rows) {
+        $SecondaryDb = New-Object System.Object
+        $SecondaryDb | Add-Member -MemberType NoteProperty -Name "SecondaryServerName" -Value $Row["secondary_server"]
+        $SecondaryDb | Add-Member -MemberType NoteProperty -Name "SecondaryDatabaseName" -Value $Row["secondary_database"]
+
+        $SecondaryDatabases += $SecondaryDb
+    }
+
+    return $SecondaryDatabases
 }
 
 function Get-AgentJob {
@@ -123,4 +168,8 @@ function Get-AgentJob {
     return $Job
 }
 
+
+
 RetrieveAndDisplay-LogShippingConfiguration -SqlServerName $SqlServerName
+
+#Get-PrimaryDatabases -SqlServerName $SqlServerName
