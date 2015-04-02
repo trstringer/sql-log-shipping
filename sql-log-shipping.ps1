@@ -77,13 +77,11 @@ function RetrieveAndDisplay-LogShippingConfiguration {
         "Restore all:      $RestoreAllDesc"
         "Restore mode:     $RestoreModeDesc"
         "Disconnect users: $DisconnectUsersDesc"
-        ""
         "Block size:    $($SecondaryDb.BlockSize) BYTES"
         "Buffer count:  $($SecondaryDb.BufferCount)"
         "Max transfer size: $($SecondaryDb.MaxTransferSize) BYTES"
-        ""
-        "Last restored file: $($SecondaryDb.LastRestoredFile)"
         "Last restored date: $($Secondarydb.LastRestoredDate)"
+        "Last restored file: $($SecondaryDb.LastRestoredFile)"
     }
 }
 function Get-PrimaryDatabases {
