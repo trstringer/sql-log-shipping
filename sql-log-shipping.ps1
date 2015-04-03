@@ -45,6 +45,25 @@ function RetrieveAndDisplay-LogShippingConfiguration {
             "   *** SECONDARY DATABASE ($($PrimSecondaryDb.SecondaryDatabaseName)) ***"
             "  Database name:       $($PrimSecondaryDb.SecondaryDatabaseName)"
             "  SQL Server instance: $($PrimSecondaryDb.SecondaryServerName)"
+            try {
+                $RemoteDb = Get-SecondaryDatabase -SqlServerName $PrimSecondaryDb.SecondaryServerName -DatabaseName $PrimSecondaryDb.SecondaryDatabaseName
+            }
+            catch {
+                # silently continue but make sure this variable is set to null to indicate 
+                # that we weren't able to connect successfully and no data is returned
+                #
+                $RemoteDb = $null
+            }
+            if ($RemoteDb -ne $null) {
+                $LastRestoredDate  = $RemoteDb.LastRestoredDate
+                $LastRestoredFile = $RemoteDb.LastRestoredFile
+            }
+            else {
+                $LastRestoredDate = "<UNABLE TO GET DATA FROM SECONDARY>"
+                $LastRestoredFile = "<UNABLE TO GET DATA FROM SECONDARY>"
+            }
+            "  Last restored date:  $LastRestoredDate"
+            "  Last restored file:  $LastRestoredFile"
         }
     }
 
@@ -246,6 +265,17 @@ function Get-SecondaryDatabases {
     }
 
     return $SecondaryDatabases
+}
+function Get-SecondaryDatabase {
+    param (
+        [Parameter(Mandatory = $true)]
+        [string]$SqlServerName,
+
+        [Parameter(Mandatory = $true)]
+        [string]$DatabaseName
+    )
+
+    return Get-SecondaryDatabases -SqlServerName $SqlServerName | Where-Object {$_.DatabaseName -eq $DatabaseName}
 }
 
 RetrieveAndDisplay-LogShippingConfiguration -SqlServerName $SqlServerName
