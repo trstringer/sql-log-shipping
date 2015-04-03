@@ -29,20 +29,19 @@ function RetrieveAndDisplay-LogShippingConfiguration {
                 2 { "INHERIT SERVER CONFIG" }
             }
 
-        " ***** PRIMARY DATABASE ($($PrimaryDb.DatabaseName)) *****"
+        " ***** PRIMARY DATABASE [local] ($($PrimaryDb.DatabaseName)) *****"
         "Database name:       $($PrimaryDb.DatabaseName)"
         "SQL Server instance: $SqlServerName"
-        ""
         "Backup share:         $($PrimaryDb.BackupShare)"
         "Backup directory:     $($PrimaryDb.BackupDirectory)"
-        "Backup retention(hr): $($PrimaryDb.BackupRetentionPeriod / 60)"
+        "Backup retention:     $($PrimaryDb.BackupRetentionPeriod / 60) HOURS"
         "Backup compression:   $BackupCompression"
         "Last backup date:     $($PrimaryDb.LastBackupDate)"
         "Last backup file:     $($PrimaryDb.LastBackupFile)"
         "Backup job name:      $($PrimaryDb.BackupJob.JobName)"
         ""
         foreach ($PrimSecondaryDb in $PrimaryDb.SecondaryDatabases) {
-            "   *** SECONDARY DATABASE ($($PrimSecondaryDb.SecondaryDatabaseName)) ***"
+            "   *** SECONDARY DATABASE [remote] ($($PrimSecondaryDb.SecondaryDatabaseName)) ***"
             "  Database name:       $($PrimSecondaryDb.SecondaryDatabaseName)"
             "  SQL Server instance: $($PrimSecondaryDb.SecondaryServerName)"
             try {
@@ -55,15 +54,19 @@ function RetrieveAndDisplay-LogShippingConfiguration {
                 $RemoteDb = $null
             }
             if ($RemoteDb -ne $null) {
-                $LastRestoredDate  = $RemoteDb.LastRestoredDate
-                $LastRestoredFile = $RemoteDb.LastRestoredFile
+                "  Backup source directory:      $($RemoteDb.BackupSourceDirectory)"
+                "  Backup destination directory: $($RemoteDb.BackupDestinationDirectory)"
+                "  File retention period:        $($RemoteDb.FileRetentionPeriod / 60) HOURS"
+                "  Copy job:                     $($RemoteDb.CopyJob.JobName)"
+                "  Last copied date:             $($RemoteDb.LastCopiedDate)"
+                "  Last copied file:             $($RemoteDb.LastCopiedFile)"
+                "  Restore job:                  $($RemoteDb.RestoreJob.JobName)"
+                "  Last restored date:           $($RemoteDb.LastRestoredDate)"
+                "  Last restored file:           $($RemoteDb.LastRestoredFile)"
             }
             else {
-                $LastRestoredDate = "<UNABLE TO GET DATA FROM SECONDARY>"
-                $LastRestoredFile = "<UNABLE TO GET DATA FROM SECONDARY>"
+                "  <UNABLE TO GET DATA FROM SECONDARY>"
             }
-            "  Last restored date:  $LastRestoredDate"
-            "  Last restored file:  $LastRestoredFile"
         }
     }
 
@@ -88,7 +91,7 @@ function RetrieveAndDisplay-LogShippingConfiguration {
             $DisconnectUsersDesc = "NO"
         }
 
-        " ***** SECONDARY DATABASE ($($SecondaryDb.DatabaseName)) *****"
+        " ***** SECONDARY DATABASE [local] ($($SecondaryDb.DatabaseName)) *****"
         "Database name:       $($SecondaryDb.DatabaseName)"
         "SQL Server instance: $SqlServerName"
         ""
@@ -234,11 +237,16 @@ function Get-SecondaryDatabases {
     $SqlCmd = New-Object System.Data.SqlClient.SqlCommand
     $SqlCmd.Connection = $SqlConnection
     $SqlCmd.CommandText = "
-        select secondary_id, secondary_database,
-	        restore_delay, restore_all, restore_mode,
-	        disconnect_users, block_size, buffer_count, max_transfer_size,
-	        last_restored_file, last_restored_date
-        from msdb.dbo.log_shipping_secondary_databases;"
+        select sd.secondary_id, sd.secondary_database,
+            sd.restore_delay, sd.restore_all, sd.restore_mode,
+            sd.disconnect_users, sd.block_size, sd.buffer_count, sd.max_transfer_size,
+            sd.last_restored_file, sd.last_restored_date,
+	        s.backup_source_directory, s.backup_destination_directory,
+	        s.file_retention_period, s.copy_job_id, s.restore_job_id,
+	        s.last_copied_date, s.last_copied_file
+        from msdb.dbo.log_shipping_secondary_databases sd
+        inner join msdb.dbo.log_shipping_secondary s
+        on sd.secondary_id = s.secondary_id;"
 
     $Output = New-Object System.Data.DataTable
     $sda = New-Object System.Data.SqlClient.SqlDataAdapter($SqlCmd)
@@ -260,6 +268,13 @@ function Get-SecondaryDatabases {
         $SecondaryDb | Add-Member -MemberType NoteProperty -Name "MaxTransferSize" -Value ([System.Convert]::ToInt32($Row["max_transfer_size"]))
         $SecondaryDb | Add-Member -MemberType NoteProperty -Name "LastRestoredFile" -Value $Row["last_restored_file"]
         $SecondaryDb | Add-Member -MemberType NoteProperty -Name "LastRestoredDate" -Value $Row["last_restored_date"]
+        $SecondaryDb | Add-Member -MemberType NoteProperty -Name "BackupSourceDirectory" -Value $Row["backup_source_directory"]
+        $SecondaryDb | Add-Member -MemberType NoteProperty -Name "BackupDestinationDirectory" -Value $Row["backup_destination_directory"]
+        $SecondaryDb | Add-Member -MemberType NoteProperty -Name "FileRetentionPeriod" -Value ([System.Convert]::ToInt32($Row["file_retention_period"]))
+        $SecondaryDb | Add-Member -MemberType NoteProperty -Name "CopyJob" -Value (Get-AgentJob -SqlServerName $SqlServerName -JobId ([System.Guid]::Parse($Row["copy_job_id"])))
+        $SecondaryDb | Add-Member -MemberType NoteProperty -Name "RestoreJob" -Value (Get-AgentJob -SqlServerName $SqlServerName -JobId ([System.Guid]::Parse($Row["restore_job_id"])))
+        $SecondaryDb | Add-Member -MemberType NoteProperty -Name "LastCopiedDate" -Value $Row["last_copied_date"]
+        $SecondaryDb | Add-Member -MemberType NoteProperty -Name "LastCopiedFile" -Value $Row["last_copied_file"]
 
         $SecondaryDatabases += $SecondaryDb
     }
