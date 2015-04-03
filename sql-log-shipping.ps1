@@ -29,6 +29,13 @@ function RetrieveAndDisplay-LogShippingConfiguration {
                 2 { "INHERIT SERVER CONFIG" }
             }
 
+        if ($PrimaryDb.BackupJob.IsEnabled) {
+            $BackupJobStatus = "ENABLED"
+        }
+        else {
+            $BackupJobStatus = "DISABLED"
+        }
+
         " ***** PRIMARY DATABASE [local] ($($PrimaryDb.DatabaseName)) *****"
         "Database name:       $($PrimaryDb.DatabaseName)"
         "SQL Server instance: $SqlServerName"
@@ -38,7 +45,7 @@ function RetrieveAndDisplay-LogShippingConfiguration {
         "Backup compression:   $BackupCompression"
         "Last backup date:     $($PrimaryDb.LastBackupDate)"
         "Last backup file:     $($PrimaryDb.LastBackupFile)"
-        "Backup job name:      $($PrimaryDb.BackupJob.JobName)"
+        "Backup job name:      $($PrimaryDb.BackupJob.JobName) ($BackupJobStatus)"
         ""
         foreach ($PrimSecondaryDb in $PrimaryDb.SecondaryDatabases) {
             "   *** SECONDARY DATABASE [remote] ($($PrimSecondaryDb.SecondaryDatabaseName)) ***"
@@ -54,13 +61,26 @@ function RetrieveAndDisplay-LogShippingConfiguration {
                 $RemoteDb = $null
             }
             if ($RemoteDb -ne $null) {
+                if ($RemoteDb.CopyJob.IsEnabled) {
+                    $CopyJobStatus = "ENABLED"
+                }
+                else {
+                    $CopyJobStatus = "DISABLED"
+                }
+                if ($RemoteDb.RestoreJob.IsEnabled) {
+                    $RestoreJobStatus = "ENABLED"
+                }
+                else {
+                    $RestoreJobStatus = "DISABLED"
+                }
+
                 "  Backup source directory:      $($RemoteDb.BackupSourceDirectory)"
                 "  Backup destination directory: $($RemoteDb.BackupDestinationDirectory)"
                 "  File retention period:        $($RemoteDb.FileRetentionPeriod / 60) HOURS"
-                "  Copy job:                     $($RemoteDb.CopyJob.JobName)"
+                "  Copy job:                     $($RemoteDb.CopyJob.JobName) ($CopyJobStatus)"
                 "  Last copied date:             $($RemoteDb.LastCopiedDate)"
                 "  Last copied file:             $($RemoteDb.LastCopiedFile)"
-                "  Restore job:                  $($RemoteDb.RestoreJob.JobName)"
+                "  Restore job:                  $($RemoteDb.RestoreJob.JobName) ($RestoreJobStatus)"
                 "  Last restored date:           $($RemoteDb.LastRestoredDate)"
                 "  Last restored file:           $($RemoteDb.LastRestoredFile)"
             }
@@ -202,7 +222,7 @@ function Get-AgentJob {
     $SqlCmd = New-Object System.Data.SqlClient.SqlCommand
     $SqlCmd.Connection = $SqlConnection
     $SqlCmd.CommandText = "
-        select job_id, name
+        select job_id, name, enabled
         from msdb.dbo.sysjobs
         where job_id = @job_id;"
 
@@ -223,6 +243,7 @@ function Get-AgentJob {
     $Job = New-Object System.Object
     $Job | Add-Member -MemberType NoteProperty -Name "JobId" -Value ([System.Guid]::Parse($Output.Rows[0]["job_id"]))
     $Job | Add-Member -MemberType NoteProperty -Name "JobName" -Value $Output.Rows[0]["name"]
+    $Job | Add-Member -MemberType NoteProperty -Name "IsEnabled" -Value ([System.Convert]::ToBoolean($Output.Rows[0]["enabled"]))
 
     return $Job
 }
