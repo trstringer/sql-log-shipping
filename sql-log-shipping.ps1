@@ -2,7 +2,12 @@
     [Parameter(Mandatory = $true)]
     [string]$SqlServerName,
 
-    [switch]$Discovery
+    [switch]$Discovery,
+
+    [switch]$History,
+
+    [Parameter(Mandatory = $false)]
+    [int]$EntryCount = 10
 )
 
 function Get-ConnectionString {
@@ -318,6 +323,67 @@ function Get-SecondaryDatabase {
     return Get-SecondaryDatabases -SqlServerName $SqlServerName | Where-Object {$_.DatabaseName -eq $DatabaseName}
 }
 
+function Get-History {
+    param (
+        [Parameter(Mandatory = $true)]
+        [string]$SqlServerName,
+
+        [Parameter(Mandatory = $true)]
+        [int]$Top
+    )
+
+    $SqlConnection = New-Object System.Data.SqlClient.SqlConnection(Get-ConnectionString -SqlServerName $SqlServerName)
+    $SqlCmd = New-Object System.Data.SqlClient.SqlCommand
+    $SqlCmd.Connection = $SqlConnection
+    $SqlCmd.CommandText = "
+        select top (@top_count)
+	        session_id,
+	        session_status_desc = 
+		        case session_status
+			        when 0 then 'STARTING'
+			        when 1 then 'RUNNING'
+			        when 2 then 'SUCCESS'
+			        when 3 then 'ERROR'
+			        when 4 then 'WARNING'
+                    else 'UNKNOWN'
+		        end,
+	        agent_type_desc = 
+		        case agent_type
+			        when 0 then 'BACKUP'
+			        when 1 then 'COPY'
+			        when 2 then 'RESTORE'
+			        else 'UNKNOWN'
+		        end,
+	        message,
+	        log_time
+        from msdb.dbo.log_shipping_monitor_history_detail
+        order by log_time desc;"
+
+    $TopCountParam = New-Object System.Data.SqlClient.SqlParameter("@top_count", [System.Data.SqlDbType]::Int)
+    $TopCountParam.Value = $Top
+    $SqlCmd.Parameters.Add($TopCountParam) | Out-Null
+
+    $Output = New-Object System.Data.DataTable
+    $sda = New-Object System.Data.SqlClient.SqlDataAdapter($SqlCmd)
+
+    try {
+        $sda.Fill($Output) | Out-Null
+
+        return $Output
+    }
+    catch {
+        Write-Error $_.Exception
+    }
+    finally {
+        $sda.Dispose()
+        $SqlCmd.Dispose()
+        $SqlConnection.Dispose()
+    }
+}
+
 if ($Discovery) {
     RetrieveAndDisplay-LogShippingConfiguration -SqlServerName $SqlServerName
+}
+elseif ($History) {
+    Get-History -SqlServerName $SqlServerName -Top $EntryCount
 }
