@@ -1,6 +1,8 @@
 ﻿param (
     [Parameter(Mandatory = $true)]
-    [string]$SqlServerName
+    [string]$SqlServerName,
+
+    [switch]$Discovery
 )
 
 function Get-ConnectionString {
@@ -316,6 +318,6 @@ function Get-SecondaryDatabase {
     return Get-SecondaryDatabases -SqlServerName $SqlServerName | Where-Object {$_.DatabaseName -eq $DatabaseName}
 }
 
-RetrieveAndDisplay-LogShippingConfiguration -SqlServerName $SqlServerName
-
-#Get-PrimaryDatabases -SqlServerName $SqlServerName
+if ($Discovery) {
+    RetrieveAndDisplay-LogShippingConfiguration -SqlServerName $SqlServerName
+}
