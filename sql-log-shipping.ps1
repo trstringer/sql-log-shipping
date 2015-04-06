@@ -83,9 +83,11 @@ function RetrieveAndDisplay-LogShippingConfiguration {
                 "  Restore job:                  $($RemoteDb.RestoreJob.JobName) ($RestoreJobStatus)"
                 "  Last restored date:           $($RemoteDb.LastRestoredDate)"
                 "  Last restored file:           $($RemoteDb.LastRestoredFile)"
+                ""
             }
             else {
                 "  <UNABLE TO GET DATA FROM SECONDARY>"
+                ""
             }
         }
     }
