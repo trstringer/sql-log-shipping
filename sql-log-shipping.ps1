@@ -6,6 +6,8 @@
 
     [switch]$History,
 
+    [switch]$Errors,
+
     [Parameter(Mandatory = $false)]
     [int]$EntryCount = 10
 )
@@ -381,9 +383,63 @@ function Get-History {
     }
 }
 
+function Get-Errors {
+    param (
+        [Parameter(Mandatory = $true)]
+        [string]$SqlServerName,
+
+        [Parameter(Mandatory = $true)]
+        [int]$Top
+    )
+
+    $SqlConnection = New-Object System.Data.SqlClient.SqlConnection(Get-ConnectionString -SqlServerName $SqlServerName)
+    $SqlCmd = New-Object System.Data.SqlClient.SqlCommand
+    $SqlCmd.Connection = $SqlConnection
+    $SqlCmd.CommandText = "
+        select top (@top_count)
+	        log_time,
+	        agent_type_desc = 
+		        case agent_type
+			        when 0 then 'backup'
+			        when 1 then 'copy'
+			        when 2 then 'restore'
+			        else 'unknown'
+		        end,
+	        database_name,
+	        session_id,
+	        message,
+	        source
+        from msdb.dbo.log_shipping_monitor_error_detail
+        order by log_time desc;"
+
+    $TopCountParam = New-Object System.Data.SqlClient.SqlParameter("@top_count", [System.Data.SqlDbType]::Int)
+    $TopCountParam.Value = $Top
+    $SqlCmd.Parameters.Add($TopCountParam) | Out-Null
+
+    $Output = New-Object System.Data.DataTable
+    $sda = New-Object System.Data.SqlClient.SqlDataAdapter($SqlCmd)
+
+    try {
+        $sda.Fill($Output) | Out-Null
+
+        return $Output
+    }
+    catch {
+        Write-Error $_.Exception
+    }
+    finally {
+        $sda.Dispose()
+        $SqlCmd.Dispose()
+        $SqlConnection.Dispose()
+    }
+}
+
 if ($Discovery) {
     RetrieveAndDisplay-LogShippingConfiguration -SqlServerName $SqlServerName
 }
 elseif ($History) {
     Get-History -SqlServerName $SqlServerName -Top $EntryCount
+}
+elseif ($Errors) {
+    Get-Errors -SqlServerName $SqlServerName -Top $EntryCount
 }
