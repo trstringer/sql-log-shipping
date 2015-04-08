@@ -2,6 +2,9 @@
     [Parameter(Mandatory = $true)]
     [string]$SqlServerName,
 
+    <############################################
+        configuration/log display parameters
+    ############################################>
     [switch]$Discovery,
 
     [switch]$History,
@@ -9,7 +12,18 @@
     [switch]$Errors,
 
     [Parameter(Mandatory = $false)]
-    [int]$EntryCount = 10
+    [int]$EntryCount = 10,
+
+    <############################################
+        failover parameters
+    ############################################>
+    [switch]$Failover,
+
+    [Parameter(Mandatory = $false)]
+    [string]$DatabaseName,
+
+    [Parameter(Mandatory = $false)]
+    [string]$FailoverDestination
 )
 
 function Get-ConnectionString {
@@ -163,6 +177,7 @@ function Get-PrimaryDatabases {
 
     foreach ($Row in $Output.Rows) {
         $PrimaryDatabase = New-Object System.Object
+        $PrimaryDatabase | Add-Member -MemberType NoteProperty -Name "SqlServerName" -Value $SqlServerName
         $PrimaryDatabase | Add-Member -MemberType NoteProperty -Name "PrimaryId" -Value ([System.Guid]::Parse($Row["primary_id"]))
         $PrimaryDatabase | Add-Member -MemberType NoteProperty -Name "DatabaseName" -Value $Row["primary_database"]
         $PrimaryDatabase | Add-Member -MemberType NoteProperty -Name "BackupDirectory" -Value $Row["backup_directory"]
@@ -180,6 +195,18 @@ function Get-PrimaryDatabases {
     }
 
     return $PrimaryDatabases
+}
+function Get-PrimaryDatabase {
+    param (
+        [Parameter(Mandatory = $true)]
+        [string]$SqlServerName,
+
+        [Parameter(Mandatory = $true)]
+        [string]$DatabaseName
+    )
+
+    Get-PrimaryDatabases -SqlServerName $SqlServerName |
+        Where-Object {$_.DatabaseName -eq $DatabaseName}
 }
 function Get-PrimarySecondaryDatabases {
     param (
