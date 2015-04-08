@@ -461,6 +461,87 @@ function Get-Errors {
     }
 }
 
+function Get-Database {
+    param (
+        [Parameter(Mandatory = $true)]
+        [string]$SqlServerName,
+
+        [Parameter(Mandatory = $true)]
+        [string]$DatabaseName
+    )
+
+    $SqlConnection = New-Object System.Data.SqlClient.SqlConnection(Get-ConnectionString -SqlServerName $SqlServerName)
+    $SqlCmd = New-Object System.Data.SqlClient.SqlCommand
+    $SqlCmd.Connection = $SqlConnection
+    $SqlCmd.CommandText = "
+        select name, state_desc, recovery_model_desc
+        from sys.databases
+        where name = @database_name;"
+
+    $DbNameParam = New-Object System.Data.SqlClient.SqlParameter("@database_name", [System.Data.SqlDbType]::NVarChar, 128)
+    $DbNameParam.Value = $DatabaseName
+    $SqlCmd.Parameters.Add($DbNameParam) | Out-Null
+
+    $Output = New-Object System.Data.DataTable
+    $sda = New-Object System.Data.SqlClient.SqlDataAdapter($SqlCmd)
+
+    $sda.Fill($Output) | Out-Null
+
+    if ($Output.Rows.Count -eq 0) {
+        return $null
+    }
+    else {
+        $Database = New-Object System.Object
+        $Database | Add-Member -MemberType NoteProperty -Name "Name" -Value $Output.Rows[0]["name"]
+        $Database | Add-Member -MemberType NoteProperty -Name "State" -Value $Output.Rows[0]["state_desc"]
+        $Database | Add-Member -MemberType NoteProperty -Name "RecoveryModel" -Value $Output.Rows[0]["recovery_model_desc"]
+
+        return $Database
+    }
+}
+
+function Handle-Failover {
+    param (
+        [Parameter(Mandatory = $true)]
+        [string]$SourceSqlInstanceName,
+
+        [Parameter(Mandatory = $true)]
+        [string]$DestinationSqlInstanceName,
+
+        [Parameter(Mandatory = $true)]
+        [string]$DatabaseName
+    )
+
+    if (!(Check-IfFailoverPossible -SourceSqlInstanceName $SourceSqlInstanceName -DestinationSqlInstanceName $DestinationSqlInstanceName -DatabaseName $DatabaseName)) {
+        "Failover is not possible"
+        return
+    }
+}
+function Check-IfFailoverPossible {
+    param (
+        [Parameter(Mandatory = $true)]
+        [string]$SourceSqlInstanceName,
+
+        [Parameter(Mandatory = $true)]
+        [string]$DestinationSqlInstanceName,
+
+        [Parameter(Mandatory = $true)]
+        [string]$DatabaseName
+    )
+
+    # step through a bunch of rules that need to pass
+    # to see if failover is even possible
+    #
+    # 1. the database must exist on the destination instance
+    # 2. the database must be a secondary of the primary (if the primary is accessible)
+
+    if ((Get-Database -SqlServerName $DestinationSqlInstanceName -DatabaseName $DatabaseName) -eq $null) {
+        "$DatabaseName doesn't exist in $DestinationSqlInstanceName"
+        return false
+    }
+}
+
+
 if ($Discovery) {
     RetrieveAndDisplay-LogShippingConfiguration -SqlServerName $SqlServerName
 }
@@ -469,4 +550,12 @@ elseif ($History) {
 }
 elseif ($Errors) {
     Get-Errors -SqlServerName $SqlServerName -Top $EntryCount
+}
+elseif ($Failover) {
+    if (!$DatabaseName -or !$FailoverDestination) {
+        "ERROR!!!  You must specify the database name and failover destination SQL instance name"
+    }
+    else {
+        Handle-Failover -SourceSqlInstanceName $SqlServerName -DestinationSqlInstanceName $FailoverDestination -DatabaseName $DatabaseName
+    }
 }
