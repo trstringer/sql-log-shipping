@@ -500,23 +500,6 @@ function Get-Database {
     }
 }
 
-function Handle-Failover {
-    param (
-        [Parameter(Mandatory = $true)]
-        [string]$SourceSqlInstanceName,
-
-        [Parameter(Mandatory = $true)]
-        [string]$DestinationSqlInstanceName,
-
-        [Parameter(Mandatory = $true)]
-        [string]$DatabaseName
-    )
-
-    if (!(Check-IfFailoverPossible -SourceSqlInstanceName $SourceSqlInstanceName -DestinationSqlInstanceName $DestinationSqlInstanceName -DatabaseName $DatabaseName)) {
-        "Failover is not possible"
-        return
-    }
-}
 function Check-IfFailoverPossible {
     param (
         [Parameter(Mandatory = $true)]
@@ -539,6 +522,117 @@ function Check-IfFailoverPossible {
         "$DatabaseName doesn't exist in $DestinationSqlInstanceName"
         return false
     }
+}
+
+function Is-DatabaseAvailabile {
+    param (
+        [Parameter(Mandatory = $true)]
+        [string]$SqlServerName,
+
+        [Parameter(Mandatory = $true)]
+        [string]$DatabaseName
+    )
+
+    try {
+        $Database = Get-Database -SqlServerName $SqlServerName -DatabaseName $DatabaseName
+        if ($Database -eq $null) {
+            return $false
+        }
+        if ($Database.State -eq "ONLINE") {
+            return $true
+        }
+        else {
+            return $false
+        }
+    }
+    catch {
+        # if we fail here then we can only assume the database
+        # is not accessible, so return false to reflect this
+        #
+        return $false
+    }
+}
+
+function Backup-LogTail {
+    param (
+        [Parameter(Mandatory = $true)]
+        [string]$SqlServerName,
+
+        [Parameter(Mandatory = $true)]
+        [string]$DatabaseName,
+
+        [Parameter(Mandatory = $true)]
+        [string]$BackupPathAndFileName
+    )
+
+    $SqlConnection = New-Object System.Data.SqlClient.SqlConnection(Get-ConnectionString -SqlServerName $SqlServerName)
+    $SqlCmd = New-Object System.Data.SqlClient.SqlCommand
+    $SqlCmd.Connection = $SqlConnection
+    $SqlCmd.CommandText = "
+        backup log $DatabaseName
+        to disk = '$BackupPathAndFileName'
+        with init, norecovery;"
+
+    try {
+        $SqlConnection.Open()
+        $SqlCmd.ExecuteNonQuery() | Out-Null
+    }
+    finally {
+        $SqlCmd.Dispose()
+        $SqlConnection.Dispose()
+    }
+}
+
+function Handle-Failover {
+    param (
+        [Parameter(Mandatory = $true)]
+        [string]$SourceSqlInstanceName,
+
+        [Parameter(Mandatory = $true)]
+        [string]$DestinationSqlInstanceName,
+
+        [Parameter(Mandatory = $true)]
+        [string]$DatabaseName
+    )
+
+    # we need to first see if we can even do a 
+    # failover, as there will naturally be certain 
+    # situations where a failover is not even 
+    # possible
+    #
+    if (!(Check-IfFailoverPossible -SourceSqlInstanceName $SourceSqlInstanceName -DestinationSqlInstanceName $DestinationSqlInstanceName -DatabaseName $DatabaseName)) {
+        "Failover is not possible"
+        return
+    }
+
+    # if a failover is possible, we need to now 
+    # check and see if we can take a tail log backup 
+    # on the current primary
+    #
+    if (Is-DatabaseAvailabile -SqlServerName $SourceSqlInstanceName -DatabaseName $DatabaseName) {
+        # we need to get the backup share for log shipping
+        #
+        $PrimaryDatabase = Get-PrimaryDatabase -SqlServerName $SourceSqlInstanceName -DatabaseName $DatabaseName
+        if ($PrimaryDatabase -eq $null) {
+            "Unable to obtain primary database information"
+            return
+        }
+        $BackupPath = $PrimaryDatabase.BackupShare.TrimEnd("\")
+        $BackupName = "$($DatabaseName)_$([System.Guid]::NewGuid().ToString().Replace("-", """)).trn"
+
+        # do a tail log backup on the primary database
+        #
+        Backup-LogTail -SqlServerName $SqlServerName -DatabaseName $DatabaseName -BackupPathAndFileName "$BackupPath\$BackupName"
+        if (!(Test-Path "$BackupPath\$BackupName")) {
+            "Tail log backup file not existing when expected"
+            return
+        }
+    }
+
+    # at this point we need to "flush" all outstanding backups
+    # ("flush" in this context means copy and restore all that still 
+    # need to be) before we can even think of recovering the database
+    #
 }
 
 
